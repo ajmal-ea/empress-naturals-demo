@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const sendButton = document.getElementById('send-button');
     
     // Get API URL from config or use default
-    const API_BASE_URL = window.EA_CHATBOT_CONFIG ? window.EA_CHATBOT_CONFIG.apiBaseUrl : 'https://empress-naturals-demo-production.up.railway.app/';
+    const API_BASE_URL = window.EA_CHATBOT_CONFIG ? window.EA_CHATBOT_CONFIG.apiBaseUrl : 'https://empress-naturals-demo-production.up.railway.app';
     const API_CHAT_URL = `${API_BASE_URL}/chat`;
     
     // Generate a unique session ID or retrieve from localStorage

@@ -33,12 +33,12 @@ function detectApiUrl() {
     
     if (isDocker) {
         // When running in Docker, use the service name from docker-compose
-        return 'https://empress-naturals-ea-bot-backend-production.up.railway.app/';
+        return 'https://empress-naturals-ea-bot-backend-production.up.railway.app';
     } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         // Local development outside Docker
-        return 'https://empress-naturals-ea-bot-backend-production.up.railway.app/';
+        return 'https://empress-naturals-ea-bot-backend-production.up.railway.app';
     } else {
         // Production environment - replace with your actual production API URL
-        return 'https://empress-naturals-ea-bot-backend-production.up.railway.app/';
+        return 'https://empress-naturals-ea-bot-backend-production.up.railway.app';
     }
 } 
