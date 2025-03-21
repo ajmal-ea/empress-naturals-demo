@@ -1,0 +1,33 @@
+services:
+  # Frontend Web Service
+  - type: web
+    name: empress-chatbot-frontend
+    runtime: docker
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000  # Match Render's expected port
+    dockerfilePath: Dockerfile.frontend  # Correct path to frontend Dockerfile
+    autoDeploy: true
+    plan: free  # Specify the plan
+    # Make this the main service that shows in your domain
+    domains:
+      - empress-chatbot.onrender.com
+
+  # Backend API Service  
+  - type: web
+    name: empress-chatbot-api
+    runtime: docker
+    envVars:
+      - key: SUPABASE_URL
+        value: https://xjfnuiknkxggygmgqgxg.supabase.co/
+      - key: SUPABASE_KEY
+        value: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      - key: MISTRAL_API_KEY
+        value: DJQ7OG5FeAPPeG7ut6PNCpMqanV365nj
+      - key: GROQ_API_KEY
+        value: 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
+    dockerfilePath: Dockerfile  # Correct path to backend Dockerfile
+    autoDeploy: true
+    plan: free  # Specify the plan

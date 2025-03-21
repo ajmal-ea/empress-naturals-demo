@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  chatbot-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ea-chatbot-api
+    ports:
+      - "8000:8000"
+    environment:
+      - SUPABASE_URL=https://xjfnuiknkxggygmgqgxg.supabase.co/
+      - SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqZm51aWtua3hnZ3lnbWdxZ3hnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MDEzNzYzMSwiZXhwIjoyMDU1NzEzNjMxfQ.xzVATCSvGiFX8iYe8rMyxKVhLjTeO6ws3drdXxWXDHI
+      - MISTRAL_API_KEY=DJQ7OG5FeAPPeG7ut6PNCpMqanV365nj
+      - GROQ_API_KEY=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
+    volumes:
+      - ./backend/ea_chatbot.py:/app/ea_chatbot.py
+      - ./backend/ea_chatbot_app.py:/app/ea_chatbot_app.py
+    networks:
+      - chatbot-network
+
+  chatbot-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: ea-chatbot-frontend
+    ports:
+      - "10000:10000"
+    depends_on:
+      - chatbot-api
+    volumes:
+      - ./frontend/static:/app/static
+      - ./frontend/test-embed.html:/app/test-embed.html
+      - ./frontend/dev-server.js:/app/dev-server.js
+    networks:
+      - chatbot-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ea-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./backend/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - chatbot-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ea-grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./backend/chatbot-dashboard.json:/etc/grafana/provisioning/dashboards/chatbot-dashboard.json
+      - ./backend/dashboard.yaml:/etc/grafana/provisioning/dashboards/dashboard.yaml
+      - ./backend/datasource-provider.yaml:/etc/grafana/provisioning/datasources/datasource-provider.yaml
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin  # Change this in production!
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - chatbot-network
+    depends_on:
+      - prometheus
+
+networks:
+  chatbot-network:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:

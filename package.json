@@ -1,0 +1,16 @@
+{
+  "name": "ea-website-rag-chatbot",
+  "version": "1.0.0",
+  "description": "Express Analytics Chatbot",
+  "scripts": {
+    "start:frontend": "cd frontend && npm run start",
+    "start:frontend:prod": "cd frontend && npm run start:prod",
+    "dev:frontend": "cd frontend && npm run dev",
+    "start:backend": "cd backend && python ea_chatbot_app.py",
+    "docker:build": "docker-compose build",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "install:frontend": "cd frontend && npm install",
+    "install:backend": "cd backend && pip install -r requirements.txt"
+  }
+} 

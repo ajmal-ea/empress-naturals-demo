@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Empress Naturals Chatbot - Embed Test</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #4a4a4a;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background-color: #b88a54;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            margin: 0;
+        }
+        
+        .content {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 30px;
+        }
+        
+        .main {
+            flex: 2;
+            min-width: 300px;
+        }
+        
+        .sidebar {
+            flex: 1;
+            min-width: 300px;
+            border: 1px solid #d9d0c5;
+            border-radius: 5px;
+            padding: 20px;
+            background-color: #f7f3ed;
+        }
+        
+        .chatbot-container {
+            border: 1px solid #d9d0c5;
+            border-radius: 5px;
+            overflow: hidden;
+            height: 600px;
+        }
+        
+        iframe {
+            border: none;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .code-block {
+            background-color: #f7f3ed;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 20px 0;
+        }
+        
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+        }
+        
+        footer {
+            margin-top: 50px;
+            text-align: center;
+            padding: 20px;
+            background-color: #f7f3ed;
+            border-top: 1px solid #d9d0c5;
+        }
+        
+        .config-panel {
+            background-color: #f0e6d8;
+            padding: 20px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border: 1px solid #d9d0c5;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #d9d0c5;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        button {
+            background-color: #b88a54;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        button:hover {
+            background-color: #9e754a;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Empress Naturals Chatbot - Embed Test</h1>
+    </header>
+    
+    <div class="container">
+        <div class="config-panel">
+            <h2>API Configuration</h2>
+            <p>Configure the chatbot to connect to your API endpoint:</p>
+            
+            <div class="form-group">
+                <label for="api-url">API Base URL:</label>
+                <input type="text" id="api-url" value="http://localhost:8000" placeholder="e.g., http://localhost:8000">
+            </div>
+            
+            <button id="update-config">Update Configuration</button>
+            <button id="reload-iframe">Reload Chatbot</button>
+        </div>
+        
+        <div class="content">
+            <div class="main">
+                <h2>About Empress Naturals Chatbot</h2>
+                <p>
+                    The Empress Naturals Chatbot is an AI-powered assistant that can help answer questions about natural skincare,
+                    products for perimenopause and menopause, organic ingredients, and personalized recommendations. This page 
+                    demonstrates how to embed the chatbot in your website using an iframe.
+                </p>
+                
+                <h2>How to Embed the Chatbot</h2>
+                <p>
+                    You can embed the Empress Naturals Chatbot on your website by using an iframe. Here's the code:
+                </p>
+                
+                <div class="code-block">
+                    <pre><code>&lt;iframe src="static/index.html" width="100%" height="600px" frameborder="0"&gt;&lt;/iframe&gt;</code></pre>
+                </div>
+                
+                <p>
+                    Alternatively, you can use the WordPress plugin for a more integrated experience. The plugin provides:
+                </p>
+                
+                <ul>
+                    <li>A floating chat widget that appears on all pages</li>
+                    <li>A shortcode to embed the chatbot inline on specific pages</li>
+                    <li>Customization options for colors, position, and more</li>
+                </ul>
+                
+                <h2>API Configuration</h2>
+                <p>
+                    For the chatbot to work properly, you need to configure it to connect to your API endpoint. 
+                    This can be done by modifying the <code>apiBaseUrl</code> variable in the <code>config.js</code> file 
+                    or by using the WordPress plugin settings.
+                </p>
+                
+                <h3>Sample API Request</h3>
+                <div class="code-block">
+                    <pre><code>curl -X 'POST' \
+  'http://localhost:8000/chat' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "message": "Tell me about Empress Naturals skincare",
+  "session_id": "string",
+  "timezone": "UTC"
+}'</code></pre>
+                </div>
+            </div>
+            
+            <div class="sidebar">
+                <h2>Live Demo</h2>
+                <p>Here's the Empress Naturals Chatbot embedded as an iframe:</p>
+                
+                <div class="chatbot-container">
+                    <iframe id="chatbot-iframe" src="static/index.html" title="Empress Naturals Chatbot"></iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <footer>
+        <p>&copy; 2025 Express Analytics. All rights reserved.</p>
+    </footer>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const apiUrlInput = document.getElementById('api-url');
+            const updateConfigBtn = document.getElementById('update-config');
+            const reloadIframeBtn = document.getElementById('reload-iframe');
+            const chatbotIframe = document.getElementById('chatbot-iframe');
+            
+            // Load saved configuration if available
+            if (localStorage.getItem('ea_test_api_url')) {
+                apiUrlInput.value = localStorage.getItem('ea_test_api_url');
+            }
+            
+            // Update configuration
+            updateConfigBtn.addEventListener('click', function() {
+                const apiUrl = apiUrlInput.value.trim();
+                if (apiUrl) {
+                    localStorage.setItem('ea_test_api_url', apiUrl);
+                    
+                    // Try to update the iframe's config directly if possible
+                    try {
+                        const iframeWindow = chatbotIframe.contentWindow;
+                        if (iframeWindow && iframeWindow.EA_CHATBOT_CONFIG) {
+                            iframeWindow.EA_CHATBOT_CONFIG.apiBaseUrl = apiUrl;
+                            alert('Configuration updated successfully!');
+                        } else {
+                            alert('Configuration saved. Please reload the chatbot to apply changes.');
+                        }
+                    } catch (error) {
+                        console.error('Could not update iframe config directly:', error);
+                        alert('Configuration saved. Please reload the chatbot to apply changes.');
+                    }
+                }
+            });
+            
+            // Reload iframe
+            reloadIframeBtn.addEventListener('click', function() {
+                chatbotIframe.src = chatbotIframe.src;
+            });
+            
+            // Inject configuration into iframe when it loads
+            chatbotIframe.addEventListener('load', function() {
+                const apiUrl = localStorage.getItem('ea_test_api_url');
+                if (apiUrl) {
+                    try {
+                        const iframeWindow = chatbotIframe.contentWindow;
+                        if (iframeWindow && iframeWindow.EA_CHATBOT_CONFIG) {
+                            iframeWindow.EA_CHATBOT_CONFIG.apiBaseUrl = apiUrl;
+                            console.log('Injected API URL into iframe:', apiUrl);
+                        }
+                    } catch (error) {
+                        console.error('Could not inject config into iframe:', error);
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html> 
