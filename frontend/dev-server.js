@@ -32,8 +32,7 @@ const host = '0.0.0.0'; // Always use 0.0.0.0 for cloud deployments
 
 // Start the server
 app.listen(port, host, () => {
-  console.log(`Empress Naturals Chatbot dev server running at http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`);
+  console.log(`Empress Naturals Chatbot dev server running at http://${host}:${port}`);
   console.log(`Server is listening on ${host}:${port}`);
   console.log(`Environment: ${isProduction ? 'Production' : 'Development'}`);
-  console.log(`Make sure your API server is running at http://localhost:8000`);
 }); 
