@@ -1,0 +1,27 @@
+# Global configuration
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+  - static_configs:
+    - targets:
+      # - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+# Scrape configurations
+scrape_configs:
+  # The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+  - job_name: 'chatbot'
+    
+    # metrics_path defaults to '/metrics'
+    # scheme defaults to 'http'.
+    
+    static_configs:
+    - targets: ['ea-chatbot-api:8000']

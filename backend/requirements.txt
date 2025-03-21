@@ -1,0 +1,15 @@
+streamlit==1.42.0
+langchain==0.3.14
+langchain-community==0.3.14
+langchain-mistralai==0.2.7
+langchain-groq==0.2.4
+supabase==2.13.0
+langdetect==1.0.9
+pytz==2024.1
+python-dotenv==1.0.0
+typing-extensions>=4.5.0
+uvicorn==0.32.1
+pydantic==2.10.3
+fastapi==0.115.6
+geoip2==5.0.1
+prometheus-client==0.21.1
