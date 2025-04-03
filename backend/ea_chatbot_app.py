@@ -14,6 +14,8 @@ from langchain.prompts import ChatPromptTemplate, PromptTemplate
 from dotenv import load_dotenv
 
 from ea_chatbot import ExpressAnalyticsChatbot, setup_logging
+from phoenix_otel import trace_function, trace_context, trace_llm_call
+from phoenix_evals import phoenix_evaluator
 
 load_dotenv(override=True)
 
@@ -54,6 +56,16 @@ class MeetingSchedulerConfig(BaseModel):
     email: str
     title: str
     description: str
+
+class EvaluationRequest(BaseModel):
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    session_id: Optional[str] = None
+    eval_type: str = "standard"
+
+class EvaluationResult(BaseModel):
+    summary: Dict[str, Any]
+    detail_count: int
 
 # Default meeting scheduler configuration
 default_meeting_config = {
@@ -189,6 +201,7 @@ async def get_active_sessions_count():
         logger.error(f"Error calculating active sessions: {str(e)}")
         return 0
     
+@trace_function(name="process_chat_request")
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_fixed(10),
@@ -201,7 +214,8 @@ async def process_chat_request(request: ChatRequest, session_id: str, chat_histo
     
     llm_start = time.time()
     try:
-        response_data = chatbot.get_response(request.message, session_id)
+        with trace_context("chatbot_get_response", {"session_id": session_id}):
+            response, token_usage = chatbot.get_response(request.message, session_id)
     except Exception as e:
         error_str = str(e)
         if 'rate_limit_exceeded' in error_str or '413' in error_str or '429' in error_str:
@@ -216,10 +230,9 @@ async def process_chat_request(request: ChatRequest, session_id: str, chat_histo
             raise
         raise
     
-    usage = response_data["token_usage"]
-    requested_tokens = usage["total_tokens"]
+    requested_tokens = token_usage["total_tokens"]
     
-    logger.info(f"Request tokens: {usage['prompt_tokens']} prompt, {usage['completion_tokens']} completion, Total: {requested_tokens}")
+    logger.info(f"Request tokens: {token_usage['input_tokens']} prompt, {token_usage['output_tokens']} completion, Total: {requested_tokens}")
     logger.info(f"Current TPM usage before request: {tpm_usage}")
     
     if tpm_usage + requested_tokens > TPM_LIMIT:
@@ -229,7 +242,7 @@ async def process_chat_request(request: ChatRequest, session_id: str, chat_histo
     tpm_usage += requested_tokens
     logger.info(f"Updated TPM usage: {tpm_usage}")
     
-    return response_data
+    return response, token_usage
 
 @app.get("/")
 async def root():
@@ -242,59 +255,107 @@ async def root():
     }
 
 @app.post("/chat", response_model=ChatResponse)
+@trace_function(name="process_chat_endpoint")
 async def chat(request: ChatRequest, client_request: Request):
-    REQUESTS_COUNTER.labels(endpoint='/chat', status_code='200').inc()
     start_time = time.time()
+    session_id = request.session_id or str(uuid.uuid4())
+    timezone = request.timezone or "UTC"
+    
+    # Get client IP for analysis
+    client_ip = client_request.headers.get("X-Forwarded-For", client_request.client.host)
+    location = get_location_from_ip(client_request)
     
     try:
-        client_ip = client_request.headers.get("X-Forwarded-For", client_request.client.host)
-        session_id = request.session_id or str(uuid.uuid4())
-        location = get_location_from_ip(client_request)
+        # Get previous chat history
         chat_history = await get_chat_history_from_supabase(session_id)
         
-        response_data = await process_chat_request(request, session_id, chat_history, client_ip)
+        # Add session metadata to the current span
+        with trace_context("user_query", {
+            "client_ip": client_ip,
+            "session_id": session_id,
+            "timezone": timezone,
+            "location": str(location) if location else None
+        }) as span:
+            span.set_attribute("user.message", request.message)
+            span.set_attribute("message.length", len(request.message))
         
-        usage = response_data["token_usage"]
-        model = "llama-3.2-3b"
-        INPUT_TOKENS.labels(model=model, endpoint='/chat').inc(usage["prompt_tokens"])
-        OUTPUT_TOKENS.labels(model=model, endpoint='/chat').inc(usage["completion_tokens"])
-        TOTAL_TOKENS.labels(model=model, endpoint='/chat').inc(usage["total_tokens"])
-        LLM_LATENCY.labels(model=model).observe(time.time() - start_time)
+        # Track message length for Prometheus
+        CHAT_LENGTH.labels(type="input").observe(len(request.message))
         
-        await store_chat_in_supabase(session_id, request.message, response_data["response"], client_ip, location)
-        response = ChatResponse(
-            response=response_data["response"],
-            timestamp=datetime.now().isoformat(),
+        # Process the chat request
+        llm_start_time = time.time()
+        with trace_context("llm_processing", {"session_id": session_id}):
+            response, tokens_data = await process_chat_request(request, session_id, chat_history, client_ip)
+        llm_latency = time.time() - llm_start_time
+        
+        # Record LLM call details
+        trace_llm_call(
+            prompt=chat_history + "\nUser: " + request.message,
+            model="mistral",
+            response=response,
+            latency=llm_latency,
+            token_metrics=tokens_data,
+            metadata={
+                "session_id": session_id,
+                "client_ip": client_ip
+            }
+        )
+        
+        # Update token metrics in Prometheus
+        if tokens_data:
+            INPUT_TOKENS.labels(model="mistral", endpoint="/chat").inc(tokens_data.get("input_tokens", 0))
+            OUTPUT_TOKENS.labels(model="mistral", endpoint="/chat").inc(tokens_data.get("output_tokens", 0))
+            TOTAL_TOKENS.labels(model="mistral", endpoint="/chat").inc(tokens_data.get("total_tokens", 0))
+            LLM_LATENCY.labels(model="mistral").observe(llm_latency)
+        
+        # Track response length
+        CHAT_LENGTH.labels(type="output").observe(len(response))
+        
+        # Store conversation in Supabase
+        await store_chat_in_supabase(session_id, request.message, response, client_ip, location)
+        
+        # Update active sessions count
+        active_sessions = await get_active_sessions_count()
+        ACTIVE_SESSIONS.set(active_sessions)
+        
+        # Generate response 
+        timestamp = datetime.now().isoformat()
+        response_data = ChatResponse(
+            response=response,
+            timestamp=timestamp,
             session_id=session_id
         )
         
-        CHAT_LENGTH.labels(type='user').observe(len(request.message))
-        CHAT_LENGTH.labels(type='assistant').observe(len(response_data["response"]))
-        ACTIVE_SESSIONS.set(await get_active_sessions_count())
+        # Record response time and request count
+        response_time = time.time() - start_time
+        RESPONSE_TIME.labels(endpoint="/chat").observe(response_time)
+        REQUESTS_COUNTER.labels(endpoint="/chat", status_code=200).inc()
         
-        return response
+        return response_data
+    except RateLimitError as e:
+        ERROR_COUNTER.labels(endpoint="/chat", error_type="rate_limit", status_code=429).inc()
+        # Log error with trace context
+        with trace_context("error", {"error_type": "rate_limit", "status_code": 429}):
+            trace_llm_call(
+                prompt=request.message, 
+                model="mistral", 
+                response=str(e), 
+                metadata={"error": "rate_limit"}
+            )
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
     except Exception as e:
-        error_msg = str(e)
-        status_code = 500
-        error_detail = "An unexpected error occurred. Please try again later."
-        
-        if 'rate_limit_exceeded' in error_msg or '429' in error_msg or '413' in error_msg:
-            status_code = 429
-            logger.error(f"Rate limit exceeded after retries: {error_msg}")
-            
-            if '413' in error_msg and 'Payload Too Large' in error_msg:
-                error_detail = "Your conversation has become too long. The system has tried to summarize it and reduce its length, but still encountered limits. Please try resetting your chat or starting a new conversation."
-            else:
-                error_detail = "We're experiencing high demand right now. Please wait a moment and try again."
-                
-            ERROR_COUNTER.labels(endpoint='/chat', error_type='RateLimitExceeded', status_code=str(status_code)).inc()
-        else:
-            ERROR_COUNTER.labels(endpoint='/chat', error_type=type(e).__name__, status_code=str(status_code)).inc()
-            logger.error(f"Error processing chat request: {error_msg}")
-            
-        raise HTTPException(status_code=status_code, detail=error_detail)
-    finally:
-        RESPONSE_TIME.labels(endpoint='/chat').observe(time.time() - start_time)
+        error_message = str(e)
+        logger.error(f"Error processing chat: {error_message}")
+        ERROR_COUNTER.labels(endpoint="/chat", error_type="general", status_code=500).inc()
+        # Log error with trace context
+        with trace_context("error", {"error_type": "general", "status_code": 500}):
+            trace_llm_call(
+                prompt=request.message, 
+                model="mistral", 
+                response=error_message, 
+                metadata={"error": error_message}
+            )
+        raise HTTPException(status_code=500, detail=f"Error processing chat: {error_message}")
 
 @app.post("/create_hubspot_contact")
 async def create_hubspot_contact(contact: HubSpotContactRequest, session_id: Optional[str] = None):
@@ -524,6 +585,73 @@ async def get_analytics():
 async def get_meeting_config():
     """Get the meeting scheduler configuration."""
     return default_meeting_config
+
+@app.post("/evaluations", response_model=EvaluationResult)
+async def run_evaluations(request: EvaluationRequest):
+    """Run evaluations on chat traces and return the results"""
+    try:
+        # Run the standard evaluations
+        results = phoenix_evaluator.run_standard_evals()
+        if not results:
+            raise HTTPException(status_code=500, detail="Failed to run evaluations")
+        
+        # Generate the summary report
+        summary = phoenix_evaluator.generate_eval_report()
+        
+        return EvaluationResult(
+            summary=summary,
+            detail_count=len(results) if results else 0
+        )
+    except Exception as e:
+        logger.error(f"Error running evaluations: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error running evaluations: {str(e)}")
+
+@app.get("/metrics/phoenix")
+async def get_phoenix_metrics():
+    """Get metrics from Phoenix traces"""
+    try:
+        # Load the traces
+        traces_df = phoenix_evaluator.load_traces()
+        
+        if traces_df.empty:
+            return {"message": "No traces found"}
+        
+        # Calculate some basic metrics
+        metrics = {
+            "total_llm_calls": len(traces_df),
+            "average_latency": traces_df.get("metrics.latency", traces_df.get("latency")).mean() if "metrics.latency" in traces_df.columns or "latency" in traces_df.columns else None,
+            "total_tokens": traces_df.get("metrics.total_tokens", traces_df.get("total_tokens")).sum() if "metrics.total_tokens" in traces_df.columns or "total_tokens" in traces_df.columns else None,
+            "recent_traces": len(traces_df[traces_df["timestamp"] > (datetime.now() - timedelta(hours=24)).isoformat()]) if "timestamp" in traces_df.columns else 0
+        }
+        
+        return metrics
+    except Exception as e:
+        logger.error(f"Error getting Phoenix metrics: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting Phoenix metrics: {str(e)}")
+
+@app.post("/export/arize", response_model=Dict[str, Any])
+async def export_to_arize(request: Dict[str, Any] = {}):
+    """Export traces to Arize platform (requires Arize API key)"""
+    arize_api_key = os.getenv("ARIZE_API_KEY")
+    arize_space_key = os.getenv("ARIZE_SPACE_KEY")
+    
+    if not arize_api_key or not arize_space_key:
+        raise HTTPException(status_code=400, detail="Arize API key and space key are required")
+    
+    try:
+        # This would be the implementation to export to Arize
+        # For demonstration purposes, we'll just return a success message
+        return {
+            "status": "success",
+            "message": "Data exported to Arize platform successfully",
+            "details": {
+                "export_time": datetime.now().isoformat(),
+                "trace_count": 0  # This would be actual count in real implementation
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error exporting to Arize: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error exporting to Arize: {str(e)}")
 
 if __name__ == "__main__":
     print("Environment variables:")

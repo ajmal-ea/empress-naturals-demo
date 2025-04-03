@@ -15,6 +15,26 @@ from typing import Dict, Any, List, Tuple
 import pytz
 import uuid
 import requests
+import time
+
+# Phoenix OTEL integration
+try:
+    from phoenix_otel import trace_function, trace_context, trace_llm_call, PHOENIX_INITIALIZED
+except ImportError:
+    PHOENIX_INITIALIZED = False
+    logging.warning("Phoenix OTEL not available, tracing will be disabled")
+    # Create dummy decorators if Phoenix is unavailable
+    def trace_function(name=None, attributes=None):
+        def decorator(func):
+            return func
+        return decorator
+    
+    @contextmanager
+    def trace_context(name, attributes=None):
+        yield None
+    
+    def trace_llm_call(**kwargs):
+        pass
 
 # Set up logging
 def setup_logging():
@@ -154,60 +174,91 @@ class ExpressAnalyticsChatbot:
             logger.error(f"Error retrieving chat history for session {session_id}: {str(e)}")
             return []
 
-    def get_response(self, question: str, session_id: str) -> Dict[str, Any]:
-        """Generate response using the LLM chain with chat history."""
+    @trace_function(name="get_response")
+    def get_response(self, question: str, session_id: str) -> Tuple[str, Dict[str, int]]:
+        """Generate response using the LLM chain with chat history and track with Phoenix."""
+        start_time = time.time()
+        token_usage = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        
         try:
             # Use Supabase for similarity search
-            docs = self.vector_store.similarity_search(question, k=3)
-            logger.info(f"The documents retrieved are: {docs}")
-            context = "\n".join([doc.page_content for doc in docs])
-            logger.info(f"The context is: {context}")
-            query_embedding = self.embeddings.embed_query(question)
-            logger.info(f"Query embedding dimension: {len(query_embedding)}")
+            with trace_context("similarity_search", {"session_id": session_id, "query": question}):
+                docs = self.vector_store.similarity_search(question, k=3)
+                logger.info(f"Found {len(docs)} relevant documents")
+                context = "\n".join([doc.page_content for doc in docs])
+                query_embedding = self.embeddings.embed_query(question)
             
             # Retrieve and prepare chat history
-            chat_history = self._prepare_chat_history(session_id)
-            logger.info(f"Chat history for session {session_id}: {chat_history}")
-
+            with trace_context("prepare_history", {"session_id": session_id}):
+                chat_history = self._prepare_chat_history(session_id)
+            
             current_time = datetime.now(pytz.UTC)
             user_timezone = pytz.timezone('UTC')
             local_time = current_time.astimezone(user_timezone)
 
             # Create the full prompt with chat history
-            prompt = get_chat_prompt()
-            messages = prompt.messages
-            # Insert chat history messages before the final human message
-            for role, message in chat_history:
-                messages.insert(-1, (role, message))
-
-            # Update the chain's prompt with the new messages
-            self.chain.prompt = ChatPromptTemplate.from_messages(messages)
+            with trace_context("prepare_prompt", {"session_id": session_id}):
+                prompt = get_chat_prompt()
+                messages = prompt.messages
+                # Insert chat history messages before the final human message
+                for role, message in chat_history:
+                    messages.insert(-1, (role, message))
+                
+                # Update the chain's prompt with the new messages
+                self.chain.prompt = ChatPromptTemplate.from_messages(messages)
+                
+                # Record the final prompt for tracing
+                final_prompt = f"System: {messages[0][1]}\n"
+                for i in range(1, len(messages)):
+                    role, message = messages[i]
+                    final_prompt += f"{role.capitalize()}: {message}\n"
 
             # Track token usage
-            with get_openai_callback() as cb:
-                response = self.chain.predict(
-                    question=question,
-                    context=context
-                    # current_date=local_time.strftime("%Y-%m-%d"),
-                    # current_time=local_time.strftime("%H:%M:%S"),
-                    # timezone=user_timezone.zone
-                )
-                logger.info(f"Token usage for session {session_id}: {cb.total_tokens} total "
-                           f"({cb.prompt_tokens} prompt, {cb.completion_tokens} completion)")
-                
-                return {
-                    "response": response,
-                    "timestamp": local_time.isoformat(),
-                    "token_usage": {
-                        "total_tokens": cb.total_tokens,
-                        "prompt_tokens": cb.prompt_tokens,
-                        "completion_tokens": cb.completion_tokens
+            with trace_context("llm_call", {"session_id": session_id, "model": "llama-3.2-3b-preview"}):
+                with get_openai_callback() as cb:
+                    response = self.chain.predict(
+                        question=question,
+                        context=context
+                    )
+                    
+                    # Record token usage for both Prometheus and Phoenix
+                    token_usage = {
+                        "input_tokens": cb.prompt_tokens,
+                        "output_tokens": cb.completion_tokens,
+                        "total_tokens": cb.total_tokens
                     }
-                }
+                    
+                    logger.info(f"Token usage for session {session_id}: {cb.total_tokens} total "
+                               f"({cb.prompt_tokens} prompt, {cb.completion_tokens} completion)")
+                    
+                    # Record detailed trace information
+                    trace_llm_call(
+                        prompt=final_prompt, 
+                        model="llama-3.2-3b-preview",
+                        response=response,
+                        latency=time.time() - start_time,
+                        token_metrics=token_usage,
+                        metadata={"session_id": session_id}
+                    )
+                    
+                    return response, token_usage
+                
         except Exception as e:
-            logger.error(f"Error generating response for session {session_id}: {str(e)}")
-            raise
+            logger.error(f"Error generating response: {str(e)}")
+            error_message = "I'm having trouble processing your request right now. Please try again in a moment."
             
+            # Record error in trace
+            if PHOENIX_INITIALIZED:
+                with trace_context("error", {"error_type": "llm_call_error", "session_id": session_id}):
+                    trace_llm_call(
+                        prompt=question,
+                        model="llama-3.2-3b-preview",
+                        response=error_message,
+                        metadata={"error": str(e), "session_id": session_id}
+                    )
+            
+            return error_message, token_usage
+
     def store_chat(self, session_id: str, user_query: str, bot_response: str):
         """Store chat interaction in Supabase."""
         try:
@@ -327,11 +378,11 @@ def main():
         with st.chat_message("assistant"):
             with st.spinner("Analyzing your question..."):
                 try:
-                    response = st.session_state.chatbot.get_response(
+                    response, token_usage = st.session_state.chatbot.get_response(
                         prompt,
                         st.session_state.session_id
                     )
-                    response_text = response['response']
+                    response_text = response
                     st.write(response_text)
                     st.session_state.messages.append({"role": "assistant", "content": response_text})
                     st.session_state.chatbot.store_chat(

@@ -13,3 +13,7 @@ pydantic==2.10.3
 fastapi==0.115.6
 geoip2==5.0.1
 prometheus-client==0.21.1
+arize-phoenix[evals]
+arize-phoenix-otel
+openinference-instrumentation-openai
+openinference-instrumentation-langchain

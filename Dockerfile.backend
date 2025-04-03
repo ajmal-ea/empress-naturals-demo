@@ -13,6 +13,12 @@ COPY backend/ea_chatbot.py .
 COPY backend/ea_chatbot_app.py .
 COPY backend/prometheus.yml .
 COPY backend/entrypoint.sh .
+COPY backend/phoenix_integration.py .
+COPY backend/phoenix_evals.py .
+COPY backend/phoenix_otel.py .
+
+# Create directory for trace logs (for fallback when not using collector)
+RUN mkdir -p /app/traces
 
 RUN chmod +x entrypoint.sh
 

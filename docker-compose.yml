@@ -4,7 +4,7 @@ services:
   chatbot-api:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.backend
     container_name: ea-chatbot-api
     ports:
       - "8000:8000"
@@ -13,11 +13,18 @@ services:
       - SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqZm51aWtua3hnZ3lnbWdxZ3hnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MDEzNzYzMSwiZXhwIjoyMDU1NzEzNjMxfQ.xzVATCSvGiFX8iYe8rMyxKVhLjTeO6ws3drdXxWXDHI
       - MISTRAL_API_KEY=DJQ7OG5FeAPPeG7ut6PNCpMqanV365nj
       - GROQ_API_KEY=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
+      # Phoenix configuration
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006/v1/traces
+      - PHOENIX_ENABLED=true
     volumes:
       - ./backend/ea_chatbot.py:/app/ea_chatbot.py
       - ./backend/ea_chatbot_app.py:/app/ea_chatbot_app.py
+      - ./backend/phoenix_integration.py:/app/phoenix_integration.py
+      - ./backend/phoenix_evals.py:/app/phoenix_evals.py
     networks:
       - chatbot-network
+    depends_on:
+      - phoenix
 
   chatbot-frontend:
     build:
@@ -34,6 +41,27 @@ services:
       - ./frontend/dev-server.js:/app/dev-server.js
     networks:
       - chatbot-network
+
+  # Phoenix service using official Docker image
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: ea-phoenix
+    ports:
+      - "6006:6006"  # UI and OTLP HTTP collector
+      - "4317:4317"  # OTLP gRPC collector
+      - "9090:9090"  # Prometheus metrics (if enabled)
+    environment:
+      - PHOENIX_WORKING_DIR=/mnt/data
+      - PHOENIX_SQL_DATABASE_URL=sqlite:////mnt/data/phoenix.db
+    volumes:
+      - phoenix_data:/mnt/data
+    networks:
+      - chatbot-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "http://0.0.0.0:6006/"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   prometheus:
     image: prom/prometheus:latest
@@ -78,3 +106,5 @@ networks:
 volumes:
   prometheus-data:
   grafana-data:
+  phoenix_data:
+    driver: local
