@@ -527,8 +527,9 @@
         
         // Function to process markdown-like formatting
         function processMarkdown(text) {
-            // Convert URLs to links
-            text = text.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+            // Modified: Convert URLs to links, but only if they're not already inside an anchor tag
+            // This regex uses negative lookahead and lookbehind to avoid URLs within existing href attributes
+            text = text.replace(/(?<!href=["'])(?<!["'])(https?:\/\/[^\s"'<>]+)(?!["']>)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
             
             // Convert line breaks to <br>
             text = text.replace(/\n/g, '<br>');

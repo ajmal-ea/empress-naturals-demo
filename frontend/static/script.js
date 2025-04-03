@@ -397,8 +397,9 @@ document.addEventListener('DOMContentLoaded', function() {
         text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
         text = text.replace(/__(.*?)__/g, '<strong>$1</strong>');
         
-        // Convert URLs to links
-        text = text.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+        // Modified: Convert URLs to links, but only if they're not already inside an anchor tag
+        // This regex uses negative lookahead and lookbehind to avoid URLs within existing href attributes
+        text = text.replace(/(?<!href=["'])(?<!["'])(https?:\/\/[^\s"'<>]+)(?!["']>)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
         
         // Split into paragraphs first (preserve empty lines)
         const paragraphs = text.split('\n\n');
